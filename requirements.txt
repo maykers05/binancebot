@@ -1,5 +1,6 @@
 Flask
 gunicorn
+flask_sqlalchemy
 python-binance
 flask-cors
 requests
