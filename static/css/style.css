@@ -1,0 +1,302 @@
+/* style.css (incluye tarjetas y tabla historial con estilo futurista) */
+
+.neon-card {
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  border: 1px solid rgba(54, 234, 255, 0.2);
+  box-shadow: 0 0 15px #36eaff77;
+  transition: transform 0.3s, box-shadow 0.3s, background 0.3s;
+}
+
+.neon-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 0 25px #36eaffaa;
+}
+
+.bg-green-600 {
+  background: linear-gradient(135deg, #0f5132, #198754, #25a36f) !important;
+  box-shadow: 0 0 15px #00ff99aa;
+  border: 1px solid #00ff99;
+}
+
+.status-up {
+  color: #78d398;
+}
+
+.bg-red-600 {
+  background: linear-gradient(135deg, #7e2222, #dc3545, #ff6b6b) !important;
+  box-shadow: 0 0 15px #ff4d6daa;
+  border: 1px solid #a34254;
+}
+
+.status-down {
+  color: #ca7575;
+}
+
+.status-neutral {
+  color: #cccccc;
+}
+
+.monitoreando {
+  color: #aaaaaa;
+}
+
+canvas {
+  height: 100px !important;
+  max-height: 100px !important;
+}
+
+select,
+input[type="number"] {
+  background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+  color: #36eaff;
+  border: 1px solid #36eaff66;
+  box-shadow: 0 0 10px #36eaff33;
+}
+
+select:focus,
+input[type="number"]:focus {
+  outline: none;
+  box-shadow: 0 0 15px #36eaff99;
+  border-color: #36eaff;
+}
+
+input[type="checkbox"]:checked + .switch-track {
+  background-color: #36eaff;
+  box-shadow: 0 0 10px #36eaff, 0 0 20px #023035 inset;
+  border-color: #36eaff;
+}
+
+input[type="checkbox"]:checked + .switch-track + .switch-thumb {
+  transform: translateX(20px);
+  background-color: #ffffff;
+  box-shadow: 0 0 10px #36eaff, 0 0 20px #36eaff inset;
+}
+
+/* HISTORIAL DE ALERTAS - Futurista */
+#alert-table-body tr {
+  background: linear-gradient(135deg, #0f0c29, #2c2c54);
+  border-bottom: 1px solid rgba(54, 234, 255, 0.1);
+  transition: background 0.3s, transform 0.2s;
+}
+
+#alert-table-body tr:hover {
+  background: linear-gradient(135deg, #1a1a40, #24243e);
+  transform: scale(1.01);
+}
+
+#alert-table-body td {
+  padding: 0.5rem 1rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+#alert-table-body td:last-child {
+  border-right: none;
+}
+
+#alert-table-body button {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+#alert-table-body button:hover {
+  color: #ff5e5e;
+  text-shadow: 0 0 8px #ff5e5e;
+}
+
+#modal-table-body tr.ganadora {
+  background: linear-gradient(135deg, #166534, #40ca73);
+  color: #d1fae5;
+  box-shadow: 0 0 15px #22c55eaa;
+  transition: background 0.3s ease;
+}
+
+/* Resultados con texto en degradado (solo letras coloreadas) */
+
+.result-ganadora {
+  font-weight: 700;
+  padding: 0;
+  border-radius: 0;
+  text-align: left;
+  display: inline;
+  min-width: auto;
+
+  background: linear-gradient(0deg, #011a10, #011608);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+
+  text-shadow: 0 0 4px #00ffcc99;
+}
+
+.result-parcial-ganadora {
+  font-weight: 600;
+  padding: 0;
+  border-radius: 0;
+  text-align: left;
+  display: inline;
+  min-width: auto;
+
+  background: linear-gradient(90deg, #a5f3d1, #0ad34d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+
+  text-shadow: 0 0 4px #00ffccaa;
+}
+
+.result-parcial-perdedora {
+  font-weight: 600;
+  padding: 0;
+  border-radius: 0;
+  text-align: left;
+  display: inline;
+  min-width: auto;
+
+  background: linear-gradient(90deg, #f58787, #dd3333);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+
+  text-shadow: 0 0 6px #fa7b7bcc;
+  filter: brightness(1.15);
+}
+
+.result-esperando {
+  color: #eeeeee;
+  font-style: italic;
+  font-weight: 500;
+  padding: 4px 8px;
+  display: inline-block;
+  min-width: 140px;
+  text-align: center;
+  border: 1px dashed #555;
+  border-radius: 8px;
+}
+
+/* Eliminar fondo y borde de la celda resultado */
+#alert-table-body td[data-resultado] {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+/* Estilos para botones modal ⚙️ */
+#settings-modal button {
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+  box-shadow: 0 0 8px #36eaff88;
+  border: 1.5px solid transparent;
+  user-select: none;
+}
+
+#close-settings {
+  background-color: #dc2626; /* rojo */
+  color: white;
+  border-color: #b91c1c;
+}
+
+#close-settings:hover {
+  background-color: #b91c1c;
+  box-shadow: 0 0 12px #dc2626cc;
+}
+
+#save-settings {
+  background-color: #0ea5e9; /* azul cyan */
+  color: white;
+  border-color: #0284c7;
+  box-shadow: 0 0 15px #0ea5e9cc;
+}
+
+#save-settings:hover {
+  background-color: #0284c7;
+  box-shadow: 0 0 20px #0ea5e9ff;
+}
+
+/* ==== AGREGADO PARA FILA GANADORA ==== */
+#alert-table-body tr.ganadora {
+  background: linear-gradient(500deg, #166534, #40ca73);
+  color: #d1fae5;
+  box-shadow: 0 0 15px #22c55eaa;
+  transition: background 0.3s ease;
+}
+
+/* ========== Parche para gráfico expandido ========== */
+
+/* Este canvas se ajusta al contenedor correctamente */
+#expanded-chart {
+  height: 100% !important;
+  width: 100% !important;
+  max-height: none !important;
+  display: block !important;
+  box-sizing: border-box;
+}
+
+/* Evitar que reglas globales afecten el gráfico expandido */
+#chart-container {
+  height: 500px;
+  width: 100%;
+  position: relative;
+}
+
+/* Scrollbar futurista camuflado estilo bot */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a; /* Fondo oscuro como el bot */
+  border-left: 1px solid #0ff2;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00ffff88, #005566aa);
+  border-radius: 8px;
+  border: 2px solid #111; /* Borde que se camufla */
+  box-shadow: 0 0 10px #0ff5;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00ffffcc, #007788dd);
+  box-shadow: 0 0 14px #0ff9;
+}
+
+#modal-historial {
+  overflow-y: auto;
+  scrollbar-color: #00ffff33 #111;
+}
+
+/* Para el interruptor animado */
+input[type="checkbox"].sr-only:checked ~ .dot {
+  transform: translateX(1.5rem);
+}
+input[type="checkbox"].sr-only + div {
+  transition: background-color 0.3s;
+}
+input[type="checkbox"].sr-only:checked + div {
+  background-color: #22c55e;
+}
+
+.bot-off {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(100%);
+}
+
+.bot-desactivado {
+  filter: grayscale(100%) brightness(0.4);
+  pointer-events: none;
+  transition: filter 0.4s ease;
+}
+
