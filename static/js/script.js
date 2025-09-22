@@ -5,43 +5,6 @@ let paramBajada = 1.5;
 
 let updateTimer = null;
 
-let botActivo = false;
-let intervaloAuto = null;
-
-function toggleBot(estadoManual = null) {
-  const toggle = document.getElementById("bot-toggle");
-  botActivo = estadoManual !== null ? estadoManual : toggle.checked;
-
-  const grid = document.getElementById("crypto-grid");
-  const alertTable = document.querySelector(".overflow-auto");
-  const lastUpdate = document.getElementById("last-update");
-
-const estadoBotEl = document.getElementById("estado-bot");
-
-if (!botActivo) {
-  clearInterval(updateTimer);
-  grid.classList.add("bot-desactivado");
-  alertTable.classList.add("bot-desactivado");
-
-  estadoBotEl.textContent = "⛔ Bot desactivado";
-  estadoBotEl.classList.remove("text-green-400");
-  estadoBotEl.classList.add("text-yellow-400");
-
-} else {
-  grid.classList.remove("bot-desactivado");
-  alertTable.classList.remove("bot-desactivado");
-
-  estadoBotEl.textContent = "✅ Bot activado";
-  estadoBotEl.classList.remove("text-yellow-400");
-  estadoBotEl.classList.add("text-green-400");
-
-  cargarAlertasDesdeServidor();
-  fetchData();
-  startAutoUpdate();
-}
-}
-
-
 function parseIntervalToMs(str) {
   const regex = /^(\d+)([smh])$/i;
   const match = str.match(regex);
@@ -66,9 +29,8 @@ function getDecimalesDinamicos(precio) {
 
 
 async function fetchData() {
-  if (!botActivo) return; // 🚫 No hacer nada si está apagado
-  const umbral = parseFloat(document.getElementById("umbral").value);
-  const interval = document.getElementById("interval").value;
+  const umbral = parseFloat(document.getElementById("umbral").value) || 5;
+  const interval = document.getElementById("interval").value || "5m";
 
   const res = await fetch(`/api/data?umbral=${umbral}&interval=${interval}`);
   const data = await res.json();
@@ -171,12 +133,7 @@ tr.innerHTML = `
       onclick="mostrarDetallesAlerta(this, '${estado}', ${price}, ${entrada}, ${objetivo})">ℹ️</span>
   </td>
   <td class="py-1 px-4 ${estado === 'SUBIDA' ? 'status-up' : 'status-down'}">${estado} +${porcentaje}%</td>
-  <td class="py-1 px-4" data-resultado>
-  <span class="${estado === 'SUBIDA' ? 'result-esperando' : 'result-parcial-perdedora'}">
-    ${estado === 'SUBIDA' ? 'ESPERANDO ENTRADA' : 'PARCIALMENTE PERDEDORA'}
-  </span>
-</td>
-
+  <td class="py-1 px-4" data-resultado><span class="result-esperando">ESPERANDO</span></td>
   <td class="py-1 px-4 text-center"><input type="checkbox" class="select-alert"></td>
 `;
 
@@ -240,16 +197,13 @@ async function drawChart(id, symbol) {
   });
 }
 
-async function revisarResultados(preciosLive, selector = "#alert-table-body tr") {
-  if (!botActivo) return;
-  const filas = document.querySelectorAll(selector);
+async function revisarResultados(precios) {
+  const filas = document.querySelectorAll("#alert-table-body tr");
 
   for (const fila of filas) {
     const celdaResultado = fila.querySelector("[data-resultado]");
-    if (!celdaResultado) continue;
-
-    // Si ya está bloqueada → GANADORA
-    if (fila.dataset.bloqueada === "true") {
+    const bloqueada = fila.dataset.bloqueada === "true";
+    if (bloqueada) {
       fila.classList.add("ganadora");
       celdaResultado.innerHTML = `<span class="result-ganadora">GANADORA</span>`;
       continue;
@@ -258,76 +212,51 @@ async function revisarResultados(preciosLive, selector = "#alert-table-body tr")
     const symbol = fila.dataset.symbol;
     const estado = fila.dataset.estado;
     const precioAlerta = parseFloat(fila.dataset.precio);
+    const objetivo = parseFloat(fila.dataset.objetivo);
     const entrada = parseFloat(fila.dataset.entrada);
     const alcanzoEntrada = fila.dataset.alcanzoEntrada === "true";
+    const fechaAlerta = new Date(fila.dataset.fecha).getTime();
 
-    // Validar estado válido
-    if (estado !== "SUBIDA" && estado !== "BAJADA") {
-      console.warn(`Estado inválido: ${estado}`, fila);
-      continue;
-    }
+    const interval = document.getElementById('interval').value || "5m";
+    const res = await fetch(`/api/klines?symbol=${symbol}&interval=${interval}`);
+    const data = await res.json();
 
-    // Obtener precio actual
-    const precioLive = preciosLive.find(p => p.symbol === symbol)?.price;
-    if (!precioLive) continue;
+    if (!data || data.length === 0) continue;
+
+    const preciosFiltrados = data.filter(d => d.t && d.t >= fechaAlerta).map(d => d.p);
+    if (preciosFiltrados.length === 0) continue;
+
+    const maxPrice = Math.max(...preciosFiltrados);
+    const minPrice = Math.min(...preciosFiltrados);
 
     if (estado === "BAJADA") {
       const objetivoBajada = precioAlerta * (1 + paramBajada / 100);
-
-      if (precioLive >= objetivoBajada) {
+      if (maxPrice >= objetivoBajada) {
         fila.dataset.bloqueada = "true";
-        fila.classList.add("ganadora");
         celdaResultado.innerHTML = `<span class="result-ganadora">GANADORA</span>`;
-
-        // ✅ Guardar en servidor que ya quedó como ganadora
-        guardarAlertaEnServidor({
-          symbol,
-          timestamp: fila.dataset.fecha,
-          estado,
-          price: precioAlerta,
-          objetivo: fila.dataset.objetivo,
-          entrada,
-          porcentaje: 0,
-          alcanzoEntrada: true,
-          bloqueada: true
-        });
-
-      } else if (precioLive > precioAlerta) {
+        fila.classList.add("ganadora");
+      } else if (maxPrice > precioAlerta) {
         celdaResultado.innerHTML = `<span class="result-parcial-ganadora">PARCIALMENTE GANADORA</span>`;
       } else {
         celdaResultado.innerHTML = `<span class="result-parcial-perdedora">PARCIALMENTE PERDEDORA</span>`;
       }
-
-    } else if (estado === "SUBIDA") {
+    } else {
       const retroceso = precioAlerta * (1 - paramRetrocesoSubida / 100);
       const objetivoSubida = retroceso * (1 + paramSubida / 100);
 
       let nuevoAlcanzoEntrada = alcanzoEntrada;
-      if (!alcanzoEntrada && precioLive <= retroceso) {
+
+      if (!alcanzoEntrada && minPrice <= retroceso) {
         nuevoAlcanzoEntrada = true;
         fila.dataset.alcanzoEntrada = "true";
       }
 
       if (nuevoAlcanzoEntrada) {
-        if (precioLive >= objetivoSubida) {
+        if (maxPrice >= objetivoSubida) {
           fila.dataset.bloqueada = "true";
           fila.classList.add("ganadora");
           celdaResultado.innerHTML = `<span class="result-ganadora">GANADORA</span>`;
-
-          // ✅ Guardar en servidor que ya quedó como ganadora
-          guardarAlertaEnServidor({
-            symbol,
-            timestamp: fila.dataset.fecha,
-            estado,
-            price: precioAlerta,
-            objetivo: fila.dataset.objetivo,
-            entrada,
-            porcentaje: 0,
-            alcanzoEntrada: true,
-            bloqueada: true
-          });
-
-        } else if (precioLive > retroceso) {
+        } else if (maxPrice > retroceso) {
           celdaResultado.innerHTML = `<span class="result-parcial-ganadora">PARCIALMENTE GANADORA</span>`;
         } else {
           celdaResultado.innerHTML = `<span class="result-parcial-perdedora">PARCIALMENTE PERDEDORA</span>`;
@@ -338,10 +267,6 @@ async function revisarResultados(preciosLive, selector = "#alert-table-body tr")
     }
   }
 }
-
-
-
-
 document.getElementById("delete-selected").addEventListener("click", async () => {
   if (!confirm("¿Estás seguro de que quieres eliminar las alertas seleccionadas?")) return;
 
@@ -388,188 +313,205 @@ document.getElementById("select-all").addEventListener("change", function () {
 });
 
 document.getElementById("open-history").addEventListener("click", () => {
-  let currentPage = 1;
-  const perPage = 30;
+  const table = document.getElementById("alert-table-body").innerHTML;
 
-  async function cargarPagina(page = 1) {
-    const res = await fetch(`/api/historial_completo?page=${page}&limit=${perPage}`);
-    const data = await res.json();
-    await renderModal(data.alertas, data.page, data.pages);
-  }
+  const modal = document.createElement("div");
+  modal.id = "modal-historial";
+  modal.style.position = "fixed";
+  modal.style.top = "5%";
+  modal.style.left = "5%";
+  modal.style.width = "90%";
+  modal.style.height = "90%";
+  modal.style.background = "#111";
+  modal.style.border = "2px solid #0ff";
+  modal.style.borderRadius = "10px";
+  modal.style.zIndex = "9999";
+  modal.style.overflow = "auto";
+  modal.style.padding = "20px";
 
-  async function renderModal(alertas, page, totalPages) {
-    const modal = document.createElement("div");
-    modal.id = "modal-historial";
-    modal.style.position = "fixed";
-    modal.style.top = "5%";
-    modal.style.left = "5%";
-    modal.style.width = "90%";
-    modal.style.height = "90%";
-    modal.style.background = "#111";
-    modal.style.border = "2px solid #0ff";
-    modal.style.borderRadius = "10px";
-    modal.style.zIndex = "9999";
-    modal.style.overflow = "auto";
-    modal.style.padding = "20px";
+modal.innerHTML = `
 
-    const filas = alertas.map(a => {
-      const dec = getDecimalesDinamicos(a.price);
-      const colorPrecio = a.estado === "SUBIDA" ? "text-green-300" : "text-red-400";
-let resultado = "";
-if (a.bloqueada) {
-  resultado = `<span class="result-ganadora">GANADORA</span>`;
-} else if (a.estado === "SUBIDA") {
-  resultado = `<span class="result-esperando">ESPERANDO ENTRADA</span>`;
-} else {
-  resultado = `<span class="result-parcial-perdedora">PARCIALMENTE PERDEDORA</span>`;
-}
+  <button id="btn-close-modal"
+    style="position:absolute;top:10px;right:10px;background:#f00;color:#fff;padding:5px 10px;border:none;border-radius:5px;cursor:pointer;">Cerrar</button>
+  <button id="btn-maximize-modal"
+    style="position:absolute;top:10px;right:80px;background:#0ff;color:#000;padding:5px 10px;border:none;border-radius:5px;cursor:pointer;">🗖</button>
+  <h1 style="color:#0ff;">📜 Historial de Alertas</h1>
+
+<div style="margin:10px 0; display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+  <!-- 🔍 Filtros -->
+  <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+    <label style="display:flex;align-items:center;gap:4px;">
+      📅 Desde:
+      <input type="date" id="filter-from" style="background:#222;color:#0ff;border:1px solid #0ff;padding:2px 6px;border-radius:4px;">
+    </label>
+    <label style="display:flex;align-items:center;gap:4px;">
+      📅 Hasta:
+      <input type="date" id="filter-to" style="background:#222;color:#0ff;border:1px solid #0ff;padding:2px 6px;border-radius:4px;">
+    </label>
+    <button id="btn-apply-filter" style="padding:4px 10px;background:#0ff;color:#000;border:none;border-radius:5px;cursor:pointer;">Filtrar</button>
+    <input type="checkbox" id="modal-select-all"> Seleccionar Todo
+    <button id="modal-delete-selected" style="padding:4px 12px;background:#f33;color:#fff;border:none;border-radius:5px;">Eliminar Seleccionadas</button>
+  </div>
+
+  <!-- 📊 Resumen al lado derecho -->
+  <div id="resumen-alertas" style="
+    margin-left:auto;
+    padding: 6px 14px;
+    border: 1px solid #0ff;
+    border-radius: 6px;
+    background: #000;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-weight: bold;
+    font-size: 14px;
+  ">
+    <span style="display:flex; align-items:center; gap:4px;">
+      <img src="https://i.ibb.co/p6xGw1w4/trafficlight-green-40427.png" style="width:14px;height:14px;">
+      <span class="text-green-400">Ganadoras: 0</span>
+    </span>
+    <span style="display:flex; align-items:center; gap:4px;">
+      <img src="https://i.ibb.co/hRwDPhQD/pngwing-com.png" style="width:14px;height:14px;">
+      <span style="color:#bbe209;">Parcialmente Ganadoras: 0</span>
+    </span>
+    <span style="display:flex; align-items:center; gap:4px;">
+      <img src="https://i.ibb.co/vvdg1CKZ/trafficlight-red-40428.png" style="width:14px;height:14px;">
+      <span class="text-red-400">Parcialmente Perdedoras: 0</span>
+    </span>
+    <span style="display:flex; align-items:center; gap:4px;">
+      <img src="https://i.ibb.co/RkqNvR96/pnfff.png" style="width:14px;height:14px;">
+      <span class="text-gray-200">Esperando Entrada: 0</span>
+    </span>
+  </div>
+</div>
 
 
-      return `
-        <tr data-symbol="${a.symbol}" data-fecha="${a.timestamp}" data-estado="${a.estado}" 
-            data-precio="${a.price}" data-objetivo="${a.objetivo}" data-entrada="${a.entrada}"
-            data-alcanzo-entrada="${a.alcanzoEntrada}" data-bloqueada="${a.bloqueada}">
-          <td>🔔 ${a.timestamp}</td>
-          <td class="font-bold text-cyan-400">${a.symbol}</td>
-          <td class="${colorPrecio}">$${a.price.toFixed(dec)}</td>
-          <td class="${a.estado === 'SUBIDA' ? 'status-up' : 'status-down'}">${a.estado} +${a.porcentaje}%</td>
-          <td data-resultado>${resultado}</td>
-          <td class="text-center"><input type="checkbox" class="select-alert"></td>
-        </tr>
-      `;
-    }).join("");
 
-    modal.innerHTML = `
-      <button id="btn-close-modal"
-        style="position:absolute;top:10px;right:10px;background:#f00;color:#fff;padding:5px 10px;border:none;border-radius:5px;cursor:pointer;">Cerrar</button>
-      <button id="btn-maximize-modal"
-        style="position:absolute;top:10px;right:80px;background:#0ff;color:#000;padding:5px 10px;border:none;border-radius:5px;cursor:pointer;">🗖</button>
-      <h1 style="color:#0ff;">📜 Historial de Alertas (página ${page} de ${totalPages})</h1>
-
-      <div style="margin:10px 0; display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
-        <div>
-          <label>📅 Desde: <input type="date" id="filter-from" style="background:#222;color:#0ff;border:1px solid #0ff;padding:2px 6px;border-radius:4px;"></label>
-          <label>📅 Hasta: <input type="date" id="filter-to" style="background:#222;color:#0ff;border:1px solid #0ff;padding:2px 6px;border-radius:4px;"></label>
-          <button id="btn-apply-filter" style="padding:4px 10px;background:#0ff;color:#000;border:none;border-radius:5px;cursor:pointer;">Filtrar</button>
-          <input type="checkbox" id="modal-select-all"> Seleccionar Todo
-          <button id="modal-delete-selected" style="padding:4px 12px;background:#f33;color:#fff;border:none;border-radius:5px;">Eliminar Seleccionadas</button>
-        </div>
-        <div id="resumen-alertas" style="margin-left:auto;padding: 6px 14px;border: 1px solid #0ff;border-radius: 6px;background: #000;display: flex;align-items: center;gap: 16px;font-weight: bold;font-size: 14px;">
-          <span style="color:#0f0;">Ganadoras: 0</span>
-          <span style="color:#ff0;">Parc. Ganadoras: 0</span>
-          <span style="color:#f33;">Parc. Perdedoras: 0</span>
-          <span style="color:#aaa;">Esperando: 0</span>
-        </div>
-      </div>
-
-      <table class="tabla-historial" style="width:100%;border-collapse:collapse;">
-        <thead><tr style="background:#222;">
-          <th>Fecha</th><th>Cripto</th><th>Precio</th><th>Estado</th><th>Resultado</th><th></th>
-        </tr></thead>
-        <tbody id="modal-table-body">${filas}</tbody>
-      </table>
-      <div style="margin-top:10px; display:flex; justify-content:space-between;">
-        <button id="prev-page" ${page <= 1 ? "disabled" : ""}>◀️ Anterior</button>
-        <button id="next-page" ${page >= totalPages ? "disabled" : ""}>Siguiente ▶️</button>
-      </div>
-    `;
-
-    document.getElementById("modal-historial")?.remove();
-
-    const estilo = document.createElement("style");
-estilo.textContent = `
-  .tabla-historial td,
-  .tabla-historial th {
-    vertical-align: middle;
-    text-align: center;
-    padding: 8px 12px;
-  }
+  </div>
+  <table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr style="background:#222;">
+        <th style="border:1px solid #555;padding:6px;">Fecha</th>
+        <th style="border:1px solid #555;padding:6px;">Cripto</th>
+        <th style="border:1px solid #555;padding:6px;">Grafico</th>
+        <th style="border:1px solid #555;padding:6px;">Precio</th>
+        <th style="border:1px solid #555;padding:6px;">Estado</th>
+        <th style="border:1px solid #555;padding:6px;">Resultado</th>
+        <th style="border:1px solid #555;padding:6px;"></th>
+      </tr>
+    </thead>
+    <tbody id="modal-table-body">${table}</tbody>
+  </table>
 `;
-modal.appendChild(estilo);
 
-    document.body.appendChild(modal);
+  document.body.appendChild(modal);
+  actualizarResumenAlertas("#modal-table-body tr");
 
-    // Actualiza resumen inicial
-    actualizarResumenAlertas("#modal-table-body tr");
+  // Cerrar modal
+  document.getElementById("btn-close-modal").addEventListener("click", () => {
+    document.body.removeChild(modal);
+  });
 
-    // === NUEVO BLOQUE: Actualiza estados con precios en vivo ===
-    const preciosLive = await fetch("/api/live").then(r => r.json());
-    await revisarResultados(preciosLive, "#modal-table-body tr");
-    actualizarResumenAlertas("#modal-table-body tr");
+  // Maximizar / Restaurar modal
+  const btnMax = document.getElementById("btn-maximize-modal");
+  let maximized = false;
+  btnMax.addEventListener("click", () => {
+    if (!maximized) {
+      modal.dataset.oldTop = modal.style.top;
+      modal.dataset.oldLeft = modal.style.left;
+      modal.dataset.oldWidth = modal.style.width;
+      modal.dataset.oldHeight = modal.style.height;
+      modal.dataset.oldBorderRadius = modal.style.borderRadius;
 
-    // Eventos internos
-    document.getElementById("btn-close-modal").addEventListener("click", () => modal.remove());
-    const btnMax = document.getElementById("btn-maximize-modal");
-    let maximized = false;
-    btnMax.addEventListener("click", () => {
-      if (!maximized) {
-        modal.style.top = "0"; modal.style.left = "0";
-        modal.style.width = "100vw"; modal.style.height = "100vh";
-        modal.style.borderRadius = "0"; btnMax.textContent = "🗗";
-      } else {
-        modal.style.top = "5%"; modal.style.left = "5%";
-        modal.style.width = "90%"; modal.style.height = "90%";
-        modal.style.borderRadius = "10px"; btnMax.textContent = "🗖";
-      }
-      maximized = !maximized;
-    });
+      modal.style.top = "0";
+      modal.style.left = "0";
+      modal.style.width = "100vw";
+      modal.style.height = "100vh";
+      modal.style.borderRadius = "0";
+      btnMax.textContent = "🗗";
+      maximized = true;
+    } else {
+      modal.style.top = modal.dataset.oldTop;
+      modal.style.left = modal.dataset.oldLeft;
+      modal.style.width = modal.dataset.oldWidth;
+      modal.style.height = modal.dataset.oldHeight;
+      modal.style.borderRadius = modal.dataset.oldBorderRadius;
+      btnMax.textContent = "🗖";
+      maximized = false;
+    }
+  });
 
-    document.getElementById("prev-page")?.addEventListener("click", () => cargarPagina(page - 1));
-    document.getElementById("next-page")?.addEventListener("click", () => cargarPagina(page + 1));
 
-    document.getElementById("modal-select-all").addEventListener("change", function () {
-      document.querySelectorAll("#modal-table-body .select-alert").forEach(cb => cb.checked = this.checked);
-    });
+// Seleccionar o deseleccionar todos los checkboxes del historial modal
+document.getElementById("modal-select-all").addEventListener("change", function () {
+  const checked = this.checked;
+  document.querySelectorAll("#modal-table-body .select-alert").forEach(cb => {
+    cb.checked = checked;
+  });
+});
 
-    document.getElementById("btn-apply-filter").addEventListener("click", () => {
-      const fromDate = document.getElementById("filter-from").value;
-      const toDate = document.getElementById("filter-to").value;
-      document.querySelectorAll("#modal-table-body tr").forEach(tr => {
-        const fecha = tr.dataset.fecha?.slice(0, 10);
-        let visible = true;
-        if (fromDate && fecha < fromDate) visible = false;
-        if (toDate && fecha > toDate) visible = false;
-        tr.style.display = visible ? "" : "none";
-      });
-      actualizarResumenAlertas("#modal-table-body tr");
-    });
+// Filtrar alertas por rango de fechas
+document.getElementById("btn-apply-filter").addEventListener("click", () => {
+  const fromDate = document.getElementById("filter-from").value;
+  const toDate = document.getElementById("filter-to").value;
 
-    document.getElementById("modal-delete-selected").addEventListener("click", async () => {
-      if (!confirm("¿Eliminar las alertas seleccionadas del historial?")) return;
-      const seleccionadas = document.querySelectorAll("#modal-table-body .select-alert:checked");
-      const datos = Array.from(seleccionadas).map(cb => {
-        const tr = cb.closest("tr");
-        return { symbol: tr.dataset.symbol, timestamp: tr.dataset.fecha };
-      });
-      if (datos.length === 0) {
-        alert("No seleccionaste ninguna alerta.");
-        return;
-      }
-      try {
-        const res = await fetch("/api/historial_completo/eliminar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(datos)
-        });
-        const result = await res.json();
-        if (result.ok) {
-          seleccionadas.forEach(cb => cb.closest("tr").remove());
-          actualizarResumenAlertas("#modal-table-body tr");
-          alert(`✅ ${result.eliminadas} alerta(s) eliminada(s)`);
-        } else {
-          alert("❌ No se pudieron eliminar: " + JSON.stringify(result));
-        }
-      } catch (err) {
-        console.error("Error de red al eliminar:", err);
-        alert("❌ Error de red al eliminar alertas");
-      }
-    });
-  }
+  document.querySelectorAll("#modal-table-body tr").forEach(tr => {
+    const fecha = tr.dataset.fecha?.slice(0,10); // yyyy-mm-dd
+    if (!fecha) return;
 
-  cargarPagina(currentPage);
+    let visible = true;
+    if (fromDate && fecha < fromDate) visible = false;
+    if (toDate && fecha > toDate) visible = false;
+
+    tr.style.display = visible ? "" : "none";
+  });
+
+  actualizarResumenAlertas("#modal-table-body tr");
 });
 
 
+
+
+  // Eliminar seleccionadas en modal
+document.getElementById("modal-delete-selected").addEventListener("click", async function () {
+  if (!confirm("¿Eliminar las alertas seleccionadas del historial?")) return;
+
+  const seleccionadas = document.querySelectorAll("#modal-table-body .select-alert:checked");
+  const datos = [];
+
+  seleccionadas.forEach(cb => {
+    const tr = cb.closest("tr");
+    const symbol = tr.dataset.symbol;
+    const timestamp = tr.dataset.fecha;
+    datos.push({ symbol, timestamp });
+  });
+
+  if (datos.length === 0) return;
+
+  try {
+    const res = await fetch("/api/alertas/eliminar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(datos)
+    });
+
+    const result = await res.json();
+    if (result.ok) {
+      seleccionadas.forEach(cb => cb.closest("tr").remove());
+      actualizarResumenAlertas("#modal-table-body tr");
+      alert(`✅ ${result.eliminadas} alerta(s) eliminada(s)`);
+    } else {
+      alert("❌ Error al eliminar alertas");
+    }
+  } catch (error) {
+    console.error("Error al eliminar alertas:", error);
+    alert("❌ Error de red al eliminar alertas");
+  }
+});
+
+
+
+});
 
 const modalSettings = document.getElementById("settings-modal");
 const btnOpenSettings = document.getElementById("open-settings");
@@ -632,7 +574,6 @@ btnSaveSettings.addEventListener("click", () => {
 });
 
 function startAutoUpdate() {
-  if (!botActivo) return; // 🚫 No arrancar si está apagado
   const intervalStr = document.getElementById("interval").value || "1m";
   const ms = parseIntervalToMs(intervalStr);
   if (updateTimer) clearInterval(updateTimer);
@@ -642,65 +583,10 @@ function startAutoUpdate() {
 document.getElementById("interval").addEventListener("change", startAutoUpdate);
 document.getElementById("umbral").addEventListener("input", fetchData);
 
-window.addEventListener("DOMContentLoaded", () => {
-  const toggle = document.getElementById("bot-toggle");
-  const savedState = localStorage.getItem("bot_activado");
+cargarAlertasDesdeServidor();
+fetchData();
 
-  if (savedState === "true") {
-    toggle.checked = true;
-    toggleBot(true);
-  } else {
-    toggle.checked = false;
-    toggleBot(false);
-  }
-
-  toggle.addEventListener("change", () => {
-    const checked = toggle.checked;
-    localStorage.setItem("bot_activado", checked);
-
-    if (checked) {
-      localStorage.setItem("bot_manual", true);
-    } else {
-      localStorage.removeItem("bot_manual");
-    }
-
-    toggleBot(checked);
-
-    if (checked) {
-      document.getElementById("alert-table-body").innerHTML = "";
-      cargarAlertasDesdeServidor();
-      fetchData();
-      startAutoUpdate();
-    }
-  });
-
-  iniciarVerificacionHorarios(); // ⏰ Arranca revisión automática
-
-  // 🔹 NUEVO BLOQUE: recordar intervalo y umbral
-  const intervalInput = document.getElementById("interval");
-  const umbralInput = document.getElementById("umbral");
-
-  // Cargar valores guardados
-  const savedInterval = localStorage.getItem("bot_interval");
-  const savedUmbral = localStorage.getItem("bot_umbral");
-  if (savedInterval) intervalInput.value = savedInterval;
-  if (savedUmbral) umbralInput.value = savedUmbral;
-
-  // Guardar cada vez que cambian
-  intervalInput.addEventListener("change", () => {
-    localStorage.setItem("bot_interval", intervalInput.value);
-    startAutoUpdate(); // para que se aplique al instante
-  });
-  umbralInput.addEventListener("input", () => {
-    localStorage.setItem("bot_umbral", umbralInput.value);
-  });
-});
-
-
-
-
-
-
+startAutoUpdate();
 
 // Inicializar flatpickr en los campos de "Desde" y "Hasta"
 flatpickr("#modal-date-from", {
@@ -802,13 +688,7 @@ async function cargarAlertasDesdeServidor() {
           onclick="mostrarDetallesAlerta(this, '${alerta.estado}', ${alerta.price}, ${alerta.entrada}, ${alerta.objetivo})">ℹ️</span>
       </td>
       <td class="py-1 px-4 ${alerta.estado === 'SUBIDA' ? 'status-up' : 'status-down'}">${alerta.estado} +${alerta.porcentaje}%</td>
-      <td class="py-1 px-4" data-resultado>
-<span class="${alerta.estado === 'SUBIDA' ? 'result-esperando' : 'result-parcial-perdedora'}">
-  ${alerta.estado === 'SUBIDA' ? 'ESPERANDO ENTRADA' : 'PARCIALMENTE PERDEDORA'}
-</span>
-
-</td>
-
+      <td class="py-1 px-4" data-resultado><span class="result-esperando">ESPERANDO</span></td>
       <td class="py-1 px-4 text-center"><input type="checkbox" class="select-alert"></td>
     `;
 
@@ -825,10 +705,9 @@ async function cargarAlertasDesdeServidor() {
     drawChart(`chart-${alerta.symbol}`, alerta.symbol);
   });
 
-const preciosLive = await fetch("/api/live").then(r => r.json());
-await revisarResultados(preciosLive, "#modal-table-body tr");
-actualizarResumenAlertas("#modal-table-body tr");
-
+  const preciosLive = await fetch("/api/live").then(r => r.json());
+  await revisarResultados(preciosLive);
+  actualizarResumenAlertas();
 }
 
 
@@ -1008,80 +887,6 @@ if (contenido === "GANADORA") {
       </span>
     `;
   }
-}
-
-
-
-// ⏰ Verificar cada minuto si llegó la hora programada para activar el bot
-function iniciarVerificacionHorarios() {
-setInterval(async () => {
-  const toggle = document.getElementById("bot-toggle");
-
-  const esManual = localStorage.getItem("bot_manual") === "true";
-  if (esManual) {
-    console.log("⏸️ Modo manual activado. No se cambia el estado automáticamente.");
-    return;
-  }
-
-    try {
-      const res = await fetch("/api/horarios");
-      const horarios = await res.json();
-
-      const ahora = new Date();
-      const fechaHoy = ahora.getFullYear() + "-" + 
-                      String(ahora.getMonth() + 1).padStart(2, "0") + "-" + 
-                      String(ahora.getDate()).padStart(2, "0");
-
-      const minutosAhora = ahora.getHours() * 60 + ahora.getMinutes();
-
-      console.log("⏱️ Revisión automática:");
-      console.log("📅 Hoy:", fechaHoy);
-      console.log("🕒 Hora actual:", ahora.toTimeString().slice(0, 5), `(${minutosAhora} minutos)`);
-
-      let debeEstarActivo = false;
-
-      for (const h of horarios) {
-        console.log("📌 Evaluando horario:", h);
-
-        const fechaInicio = h.fecha_inicio;
-        const fechaFin = h.fecha_fin;
-        const [hInicio, mInicio] = (h.horaInicio || h.inicio).split(":").map(Number);
-        const [hFin, mFin] = (h.horaFin || h.fin).split(":").map(Number);
-
-        const minInicio = hInicio * 60 + mInicio;
-        const minFin = hFin * 60 + mFin;
-
-        if (fechaHoy >= fechaInicio && fechaHoy <= fechaFin) {
-          if (minutosAhora >= minInicio && minutosAhora < minFin) {
-            console.log("✅ Coincide con este horario → debe activarse");
-            debeEstarActivo = true;
-            break;
-          } else {
-            console.log("⛔ Dentro del rango de fecha, pero fuera de hora");
-          }
-        } else {
-          console.log("⛔ No está dentro del rango de fechas");
-        }
-      }
-
-      if (debeEstarActivo && !toggle.checked) {
-        console.log("🟢 Activando bot automáticamente...");
-        toggle.checked = true;
-        localStorage.setItem("bot_activado", true);
-        toggleBot(true);
-      } else if (!debeEstarActivo && toggle.checked) {
-        console.log("🔴 Desactivando bot automáticamente...");
-        toggle.checked = false;
-        localStorage.setItem("bot_activado", false);
-        toggleBot(false);
-      } else {
-        console.log("ℹ️ Estado del bot no cambia.");
-      }
-
-    } catch (e) {
-      console.error("❌ Error al consultar /api/horarios:", e);
-    }
-  }, 10000); // Cada 10 segundos
 }
 
 
