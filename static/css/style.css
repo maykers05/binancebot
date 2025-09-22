@@ -277,26 +277,4 @@ input[type="checkbox"]:checked + .switch-track + .switch-thumb {
   scrollbar-color: #00ffff33 #111;
 }
 
-/* Para el interruptor animado */
-input[type="checkbox"].sr-only:checked ~ .dot {
-  transform: translateX(1.5rem);
-}
-input[type="checkbox"].sr-only + div {
-  transition: background-color 0.3s;
-}
-input[type="checkbox"].sr-only:checked + div {
-  background-color: #22c55e;
-}
-
-.bot-off {
-  opacity: 0.5;
-  pointer-events: none;
-  filter: grayscale(100%);
-}
-
-.bot-desactivado {
-  filter: grayscale(100%) brightness(0.4);
-  pointer-events: none;
-  transition: filter 0.4s ease;
-}
 
