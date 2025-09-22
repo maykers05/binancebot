@@ -67,8 +67,8 @@ function getDecimalesDinamicos(precio) {
 
 async function fetchData() {
   if (!botActivo) return; // 🚫 No hacer nada si está apagado
-  const umbral = parseFloat(document.getElementById("umbral").value) || 5;
-  const interval = document.getElementById("interval").value || "5m";
+  const umbral = parseFloat(document.getElementById("umbral").value);
+  const interval = document.getElementById("interval").value;
 
   const res = await fetch(`/api/data?umbral=${umbral}&interval=${interval}`);
   const data = await res.json();
@@ -279,11 +279,25 @@ async function revisarResultados(preciosLive, selector = "#alert-table-body tr")
         fila.classList.add("ganadora");
         celdaResultado.innerHTML = `<span class="result-ganadora">GANADORA</span>`;
 
+        // ✅ Guardar en servidor que ya quedó como ganadora
+        guardarAlertaEnServidor({
+          symbol,
+          timestamp: fila.dataset.fecha,
+          estado,
+          price: precioAlerta,
+          objetivo: fila.dataset.objetivo,
+          entrada,
+          porcentaje: 0,
+          alcanzoEntrada: true,
+          bloqueada: true
+        });
+
       } else if (precioLive > precioAlerta) {
         celdaResultado.innerHTML = `<span class="result-parcial-ganadora">PARCIALMENTE GANADORA</span>`;
       } else {
         celdaResultado.innerHTML = `<span class="result-parcial-perdedora">PARCIALMENTE PERDEDORA</span>`;
       }
+
     } else if (estado === "SUBIDA") {
       const retroceso = precioAlerta * (1 - paramRetrocesoSubida / 100);
       const objetivoSubida = retroceso * (1 + paramSubida / 100);
@@ -299,6 +313,20 @@ async function revisarResultados(preciosLive, selector = "#alert-table-body tr")
           fila.dataset.bloqueada = "true";
           fila.classList.add("ganadora");
           celdaResultado.innerHTML = `<span class="result-ganadora">GANADORA</span>`;
+
+          // ✅ Guardar en servidor que ya quedó como ganadora
+          guardarAlertaEnServidor({
+            symbol,
+            timestamp: fila.dataset.fecha,
+            estado,
+            price: precioAlerta,
+            objetivo: fila.dataset.objetivo,
+            entrada,
+            porcentaje: 0,
+            alcanzoEntrada: true,
+            bloqueada: true
+          });
+
         } else if (precioLive > retroceso) {
           celdaResultado.innerHTML = `<span class="result-parcial-ganadora">PARCIALMENTE GANADORA</span>`;
         } else {
@@ -310,6 +338,7 @@ async function revisarResultados(preciosLive, selector = "#alert-table-body tr")
     }
   }
 }
+
 
 
 
@@ -625,30 +654,48 @@ window.addEventListener("DOMContentLoaded", () => {
     toggleBot(false);
   }
 
-toggle.addEventListener("change", () => {
-  const checked = toggle.checked;
-  localStorage.setItem("bot_activado", checked);
+  toggle.addEventListener("change", () => {
+    const checked = toggle.checked;
+    localStorage.setItem("bot_activado", checked);
 
-  if (checked) {
-    localStorage.setItem("bot_manual", true); // 👉 Encendido manual: activar modo manual
-  } else {
-    localStorage.removeItem("bot_manual");    // 👉 Apagado manual: volver al modo automático
-  }
+    if (checked) {
+      localStorage.setItem("bot_manual", true);
+    } else {
+      localStorage.removeItem("bot_manual");
+    }
 
-  toggleBot(checked);
+    toggleBot(checked);
 
-  if (checked) {
-    document.getElementById("alert-table-body").innerHTML = "";
-    cargarAlertasDesdeServidor();
-    fetchData();
-    startAutoUpdate();
-  }
-});
-
-
+    if (checked) {
+      document.getElementById("alert-table-body").innerHTML = "";
+      cargarAlertasDesdeServidor();
+      fetchData();
+      startAutoUpdate();
+    }
+  });
 
   iniciarVerificacionHorarios(); // ⏰ Arranca revisión automática
+
+  // 🔹 NUEVO BLOQUE: recordar intervalo y umbral
+  const intervalInput = document.getElementById("interval");
+  const umbralInput = document.getElementById("umbral");
+
+  // Cargar valores guardados
+  const savedInterval = localStorage.getItem("bot_interval");
+  const savedUmbral = localStorage.getItem("bot_umbral");
+  if (savedInterval) intervalInput.value = savedInterval;
+  if (savedUmbral) umbralInput.value = savedUmbral;
+
+  // Guardar cada vez que cambian
+  intervalInput.addEventListener("change", () => {
+    localStorage.setItem("bot_interval", intervalInput.value);
+    startAutoUpdate(); // para que se aplique al instante
+  });
+  umbralInput.addEventListener("input", () => {
+    localStorage.setItem("bot_umbral", umbralInput.value);
+  });
 });
+
 
 
 
